@@ -11,6 +11,7 @@ The project directory now has a dockerfile, docker compose file and a .dockerign
 
 **Run The Application**:<p>
 To run the application, inside the project folder I will run:
+
 `
 docker compose up --build
 `  
@@ -24,8 +25,9 @@ Application built and running:<p>
 The application can be accessed on http://localhost:8080 <p>
 ![mywebapp](image-6.png)
 
-**Run The Application in the Backgroud**<p>
+**Run The Application in the Background**<p>
 To run the application in a detach mode, I will use the `-d` flag.
+
 `
 docker compose --duild -d 
 `
