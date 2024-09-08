@@ -198,7 +198,43 @@ Let check the logs of the Postgres DB. This, i will run `docker compose logs -f 
 
 ![image](https://github.com/user-attachments/assets/674e50c4-da06-409b-a7c4-af8cff7d0c0d)<p>
 
+## Adding Records to the Database
+From the updated web server accessed above, we could see simple wep application with the line of text, `Student name is`.  The application does not show a name because the database is empty. To resolve this, I will access the database and add records. To get to the database and run commands inside it, I will need to run `docker exec` command. The `id` of the postgres database is needed into get to the container. 
 
+```
+docker container ls    # to get the id
+```
+![image](https://github.com/user-attachments/assets/2b504c8f-ba5b-44ea-a80f-3222d471a1b7)<p>
+
+Having obtained the id of the postgres container, I can now `exec` into the container. 
+```
+docker exec -it a3f985971878 psql -d example -U postgres
+```
+![image](https://github.com/user-attachments/assets/4a05679d-c3b5-4e0e-a457-15675629959e)<p>
+
+Insert some records into the database:<p>
+
+```
+example=# INSERT INTO "Students" ("ID", "LastName", "FirstMidName", "EnrollmentDate") VALUES (DEFAULT, 'Jones', 'Osei', '2015-11-25');
+```
+![image](https://github.com/user-attachments/assets/ebf3a4ab-bdf6-419c-a799-9e4a2ba92f7a)<p>
+
+## Verifying That The Data Persists in the Database
+Now I will open the web app in a browser to see if the student name has now been populated. <p>
+![image](https://github.com/user-attachments/assets/294e48e3-08f7-422f-b430-76a5d889eaed)<p>
+
+Indeed, the data has been persisted. Will the data persist if the container is accidentally removed or crashed? 
+```
+docker compose rm        # remove all the containers
+
+docker compose up --build    # to run the app again
+```
+![image](https://github.com/user-attachments/assets/2c3e190b-f9f1-42ee-a968-34a66d1f4374)<p>
+
+![image](https://github.com/user-attachments/assets/785822b8-a871-4e29-9e7b-ea67bc18c774)<p>
+
+The data has been persisted even after removing the containers. <p>
+![image](https://github.com/user-attachments/assets/978bffbf-b669-49d2-b957-76c64428e582)<p>
 
 
 
