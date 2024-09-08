@@ -301,16 +301,201 @@ After changes:
 
 Using `Compose Watch` in development helps to make changes whiles editing and saving codes without rebulding the app from source.
 
+## Creating a Development Container
+During development, we might not need to run `dotnet publish` in the `Dockerfile`. Instead, we can utilise multi-stage builds to create separate stages for both development and production within the same Dockerfile. I will add a development stage to the Dockerfile and update the compose.yaml file to use it for local development. 
+
+Dockerfile before update:
+```
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:6.0-alpine AS build
+ARG TARGETARCH
+
+COPY . /source
+
+WORKDIR /source/src
+
+# Build the application.
+# Leverage a cache mount to /root/.nuget/packages so that subsequent builds don't have to re-download packages.
+RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+    dotnet publish -a ${TARGETARCH/amd64/x64} --use-current-runtime --self-contained false -o /app
+
+# Create a new stage for running the application that contains the minimal
+FROM mcr.microsoft.com/dotnet/aspnet:6.0-alpine AS final
+WORKDIR /app
+
+# Copy everything needed to run the app from the "build" stage.
+COPY --from=build /app .
+
+# Create a non-privileged user that the app will run under.
+ARG UID=10001
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/nonexistent" \
+    --shell "/sbin/nologin" \
+    --no-create-home \
+    --uid "${UID}" \
+    appuser
+USER appuser
+
+ENTRYPOINT ["dotnet", "myWebApp.dll"]
+```
+
+After update:
+```
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:6.0-alpine AS build
+ARG TARGETARCH
+COPY . /source
+WORKDIR /source/src
+
+# Build the application.
+# Leverage a cache mount to /root/.nuget/packages so that subsequent builds don't have to re-download packages.
+RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+    dotnet publish -a ${TARGETARCH/amd64/x64} --use-current-runtime --self-contained false -o /app
+
+# Added a development stage
+FROM mcr.microsoft.com/dotnet/sdk:6.0-alpine AS development
+COPY . /source
+WORKDIR /source/src
+CMD dotnet run --no-launch-profile
+
+# Create a new stage for running the application that contains the minimal
+FROM mcr.microsoft.com/dotnet/aspnet:6.0-alpine AS final
+WORKDIR /app
+# Copy everything needed to run the app from the "build" stage.
+COPY --from=build /app .
+
+# Create a non-privileged user that the app will run under.
+ARG UID=10001
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/nonexistent" \
+    --shell "/sbin/nologin" \
+    --no-create-home \
+    --uid "${UID}" \
+    appuser
+USER appuser
+
+ENTRYPOINT ["dotnet", "myWebApp.dll"]
+```
+
+Updating the compose.yaml file:
+
+```
+services:
+  server:
+    build:
+      context: .
+      # Updated with dev stage
+      target: development
+    ports:
+      - 8080:80
+    depends_on:
+      db:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: rebuild
+          path: .
+    # Updated with dev env 
+    environment:
+       - ASPNETCORE_ENVIRONMENT=Development
+       - ASPNETCORE_URLS=http://+:80'
+  db:
+    image: postgres
+    restart: always
+    user: postgres
+    secrets:
+      - db-password
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=example
+      - POSTGRES_PASSWORD_FILE=/run/secrets/db-password
+    expose:
+      - 5432
+    healthcheck:
+      test: [ "CMD", "pg_isready" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+volumes:
+  db-data:
+secrets:
+  db-password:
+    file: db/password.txt
+```
+This containerised application will now include development tools like dotnet test. 
+
+# Run .NET Tests in a Container
+Running tests at dev stage is essential to identify bugs early.
+
+## Run Tests When Developing Locally
+Compose can be used to run tests locally. I will run an xUnit test inside a container.
+
+```
+docker compose run --build --rm server dotnet test /source/tests
+```
+Test completed with these results: <p>
+![image](https://github.com/user-attachments/assets/9373993d-d0d8-4892-ac87-48745a7f57bd)<p>
+
+## Run Test when Building with Dockerfile
+In the Dockerfile, I will run the test in an exisiting build stage. Updating the Dockerfile:
+
+```
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:6.0-alpine AS build
+ARG TARGETARCH
+COPY . /source
+WORKDIR /source/src
+# Build the application.
+# Leverage a cache mount to /root/.nuget/packages so that subsequent builds don't have to re-download packages.
+RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+    dotnet publish -a ${TARGETARCH/amd64/x64} --use-current-runtime --self-contained false -o /app
+# Run test
+RUN dotnet test /source/tests
+
+# Added a development stage
+FROM mcr.microsoft.com/dotnet/sdk:6.0-alpine AS development
+COPY . /source
+WORKDIR /source/src
+CMD dotnet run --no-launch-profile
+
+# Create a new stage for running the application that contains the minimal
+FROM mcr.microsoft.com/dotnet/aspnet:6.0-alpine AS final
+WORKDIR /app
+# Copy everything needed to run the app from the "build" stage.
+COPY --from=build /app .
+
+# Create a non-privileged user that the app will run under.
+ARG UID=10001
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/nonexistent" \
+    --shell "/sbin/nologin" \
+    --no-create-home \
+    --uid "${UID}" \
+    appuser
+USER appuser
+
+ENTRYPOINT ["dotnet", "myWebApp.dll"]
+```
+
+Let's build and run the test:<p>
+```
+ docker build -t dotnet-docker-image-test --progress=plain --no-cache --target build .
+```
+
+![image](https://github.com/user-attachments/assets/ed473d8a-4fe7-489f-83d3-6fdf1703aa2a)<p>
 
 
+The test has been successful whiles building the image. If there were any problems, we could mitigate it at dev stage. 
 
+## Automate Build with Github Actions and CI/CD
 
+Here, I will configure and build the web app image with Github Actions. Automating the build reduce human errors and decrease build time as this process streamlines build, test and push to a repository. 
 
-
-
-
-
-
+### Set Up Workflow 
 
 
 
