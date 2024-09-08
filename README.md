@@ -38,6 +38,22 @@ The layers cached and reused: <p>
 ![cached layers](image-5.png)<p>
 When constructing the second build with Docker, a layer is reused from the build cache in the previous build if the command and its dependent files remain unchanged from the last build. This reuse accelerates the build process as Docker avoids rebuilding the unchanged layer. Hence, the significant decrease of build time. 
 
+**Confirm build on the cli**:
+To comfirm if our service, web server is built, I will run:
+
+`
+docker compose ls
+`
+
+![image](https://github.com/user-attachments/assets/1f4e3262-4352-4410-a956-06f5e1f6f8c2)
+
+Checking containers running: 
+
+`
+docker container ls
+`
+![image](https://github.com/user-attachments/assets/4c94a4fd-ecb3-4257-9625-b1032e0a81fe)
+
 ## Update The Application 
 
 To update th .NET application:
@@ -52,6 +68,10 @@ git stash -u
 `
 git checkout -b add-db
 `
+
+Outcome:<p>
+![image](https://github.com/user-attachments/assets/01d356ab-c14f-4627-8cc2-438b1ba656b3)
+
 ### Add a local database and persist data
 I will use a container to set up local database. This would be done by updating the compose.yaml file to define a database service and a persistent volume. This db service utilise a postgresSQL database container. 
 
