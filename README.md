@@ -236,6 +236,86 @@ docker compose up --build    # to run the app again
 The data has been persisted even after removing the containers. <p>
 ![image](https://github.com/user-attachments/assets/978bffbf-b669-49d2-b957-76c64428e582)<p>
 
+## Automatically Updating the Services
+To automatically update running Compose services, I will utilise Compose Watch. To have this functionality in the compose.yaml, I will add the Compose Watch instructions. The updated compose.yaml is below:
+```
+services:
+  server:
+    build:
+      context: .
+      target: final
+    ports:
+      - 8080:80
+    depends_on:
+      db:
+        condition: service_healthy
+    # Compose Watch added
+    develop:
+      watch:
+        - action: rebuild
+          path: .
+  # db service
+  db:
+    image: postgres
+    restart: always
+    user: postgres
+    secrets:
+      - db-password
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=example
+      - POSTGRES_PASSWORD_FILE=/run/secrets/db-password
+    expose:
+      - 5432
+    healthcheck:
+      test: [ "CMD", "pg_isready" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+volumes:
+  db-data:
+secrets:
+  db-password:
+    file: db/password.txt
+```
+
+Running the application with `Compose Watch`:<p>
+```
+docker compose watch
+```
+![image](https://github.com/user-attachments/assets/8f59dd08-4614-4b20-9e1d-200a30559bc3)<p>
+
+Opening the web app in a browser, any changes to the application's source code or files on my local machine will now be immediately reflected in the running container. 
+
+For example:<p>
+
+I will make a change in `docker-dotnet-sample/src/Pages/Index.cshtml` updating the `Student name is` with `Student name:`. 
+
+Web application before changes:<p>
+![image](https://github.com/user-attachments/assets/f631d628-2338-4579-8a26-01eb23844a26)<p>
+
+After changes:
+
+![image](https://github.com/user-attachments/assets/06b2ad71-b446-4c2d-8f06-eef5407c1983)<p>
+
+Using `Compose Watch` in development helps to make changes whiles editing and saving codes without rebulding the app from source.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
