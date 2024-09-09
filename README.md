@@ -788,7 +788,7 @@ DB logs:<p>
 I will leverage `grafana cloud` to monitor application application, CPU and memory resources. To use grafana cloud, I will utilise a a helm chart to configure the monitoring the containers and other resources. 
 
 ## Access grafana on the browser 
-![alt text]({9C41A7BA-8AF3-43BB-BED2-EA667A21FD88}.png)<p>
+![alt text](Obs/{9C41A7BA-8AF3-43BB-BED2-EA667A21FD88}.png)<p>
 
 Observing the resources available and usage, from the dashboard above the node has a total of 16 cores. However, the average usage is low, at approximately 0.468 cores, peaking at 0.670 cores. This is significantly below the total available capacity, suggesting underutilisation.
 
