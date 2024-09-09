@@ -4,10 +4,10 @@ Automating the containerising and running of a .Net application with CI/CD pipel
 ## Initialize Docker assets
 To create the necessary docker assets to containerise the application, I would employ `docker init`.<p>
 ![alt text](image.png) <p>
-![alt text](image-2.png)<p>
+![alt text](images/image-2.png)<p>
 
 The project directory now has a dockerfile, docker compose file and a .dockerignore file as below:<p>
-![alt text](image-1.png)
+![alt text](images/image-1.png)
 
 **Run The Application**:<p>
 To run the application, inside the project folder I will run:
@@ -17,13 +17,13 @@ docker compose up --build
 `  
 
 The build time is `238.6s`<p>
-![alt text](image-3.png)
+![alt text](images/image-3.png)
 
 Application built and running:<p>
-![alt text](image-4.png)
+![alt text](images/image-4.png)
 
 The application can be accessed on http://localhost:8080 <p>
-![mywebapp](image-6.png)
+![mywebapp](images/image-6.png)
 
 **Run The Application in the Background**<p>
 To run the application in a detach mode, I will use the `-d` flag.
@@ -35,7 +35,7 @@ docker compose --duild -d
 The second build time was significanlty faster. It only `2.7s` as compared to the first build. 
 This is beacuse **Docker** employed *build cache* in the second build. It checked whether it can reuse the build intruction from a previous build which it did. This is efficient as it helps **Docker** to skip unnecessary work in the second build.<p>
 The layers cached and reused: <p>
-![cached layers](image-5.png)<p>
+![cached layers](images/image-5.png)<p>
 When constructing the second build with Docker, a layer is reused from the build cache in the previous build if the command and its dependent files remain unchanged from the last build. This reuse accelerates the build process as Docker avoids rebuilding the unchanged layer. Hence, the significant decrease of build time. 
 
 **Confirm build on the cli**:
@@ -157,7 +157,8 @@ secrets:
     file: db/password.txt
 ```
 
-> **Note**: The Postgres database has its password stored in a file called password.txt within db directory.  
+> **Note**: The Postgres database has its password stored in a file called password.txt within db directory. 
+ 
 **Build the Updated Applicatiocation**:
 
 Having configured the .NET app with a local db, the new app has a db service attached to it. I will opnce again apply the new changed by running:
@@ -497,11 +498,306 @@ Here, I will configure and build the web app image with Github Actions. Automati
 
 ### Set Up Workflow 
 
+1. In a .github folder, I will create an action.yml file in a folder called workflows
+2. Configure the action.yml file for the workflows.
 
+```
+name: ci
 
+on:
+  push:
+    branches:
+      - main
 
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          # credentials here
+          username: ${{ vars.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      -
+        name: Build and test
+        uses: docker/build-push-action@v6
+        with:
+          target: build
+          load: true
+      -
+        name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          platforms: linux/amd64,linux/arm64
+          push: true
+          target: final
+          tags: ${{ vars.DOCKER_USERNAME }}/${{ github.event.repository.name }}:latest
+```
+3. Run the workflow. 
+The workflows have run successfully.<p>
+![alt text](images/image-8.png)
 
+Let's confirm if the image had been built and push to my repo in Dockerhub.<p>
 
+Image built and pushed to dockerhub repo.<p>
+![alt text](images/image-9.png)
+
+## Test The .NET Deployment with Kubernetes
+To test and debug the image built, I will utilised kubernetes locally deploy it.  
+
+### Create a Kubernetes Configurations 
+In the project directopry, I will created a file named docker-kubernetes-dotnet.yml. Configured as follows:
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    service: server
+  name: server
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: server
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        service: server
+    spec:
+      initContainers:
+        - name: wait-for-db
+          image: busybox:1.28
+          command: ['sh', '-c', 'until nc -zv db 5432; do echo "waiting for db"; sleep 2; done;']
+      containers:
+        - image: kwameds/dockerising-dotnet-apps-with-docker:latest
+          name: server
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+              hostPort: 8080
+              protocol: TCP
+          resources: {}
+      restartPolicy: Always
+status: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    service: db
+  name: db
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: db
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        service: db
+    spec:
+      containers:
+        - env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-user
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pass
+                  key: password
+          image: postgres
+          name: db
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          resources: {}
+      restartPolicy: Always
+status: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    service: server
+  name: server
+  namespace: default
+spec:
+  type: NodePort
+  ports:
+    - name: "8080"
+      port: 8080
+      targetPort: 80
+      nodePort: 30001
+  selector:
+    service: server
+status:
+  loadBalancer: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    service: db
+  name: db
+  namespace: default
+spec:
+  ports:
+    - name: "5432"
+      port: 5432
+      targetPort: 5432
+  selector:
+    service: db
+status:
+  loadBalancer: {}
+```
+
+I utilised `kustomize` to create secrets for the db credentials instead of hardcoding the username and the password. Also in the kustomize yml file, I referenced the kubernetes file source. Then applied the kustomization.yml to create all resoureces. 
+```
+secretGenerator:
+  - name: mysql-pass
+    literals:
+    - password=********
+  - name: mysql-user
+    literals:
+    - username=xxxxxx
+resources:
+  - docker-kubernetes-dotnet.yml
+```
+### Apply The configurations
+To apply the configurations, Iwill run:<p>
+```
+k apply -k ./      # k is an alias for kubectl and -k is the kustomize file
+```
+> Output:
+
+```
+❯ k apply -k ./ 
+secret/mysql-pass-845mkcm2cd created
+secret/mysql-user-hf288g282f created
+service/db created
+service/server created
+deployment.apps/db created
+deployment.apps/server created
+```
+
+Let's get the secrets created:
+```
+k get secrets
+```
+
+> Output:
+
+```
+❯ k get secrets 
+NAME                    TYPE     DATA   AGE
+mysql-pass-845mkcm2cd   Opaque   1      51s
+mysql-user-hf288g282f   Opaque   1      51s
+```
+
+Confirm deployments: 
+```
+k get deploy
+```
+> Outputs:
+
+```
+❯ k get deploy  
+NAME     READY   UP-TO-DATE   AVAILABLE   AGE
+db       1/1     1            1           86s
+server   1/1     1            1           86s
+```
+
+Fetch Pods created:
+```
+k get pods
+```
+> Output:
+
+```
+❯ k get pods   
+NAME                     READY   STATUS    RESTARTS   AGE
+db-8664df4546-gwg2z      1/1     Running   0          16m
+server-bc9cdfcbf-2dw22   1/1     Running   0          16m
+```
+
+We can also get the services:
+```
+k get services
+```
+> Output:
+>
+
+```
+❯ k get services 
+NAME         TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
+db           ClusterIP   10.99.204.96   <none>        5432/TCP         18m
+kubernetes   ClusterIP   10.96.0.1      <none>        443/TCP          36h
+server       NodePort    10.96.21.136   <none>        8080:30001/TCP   18m
+```
+
+### Access Deployments on Kubernetes Dashboard
+To access the kubernetes UI, I need to install with helm by running:
+```
+helm upgrade --install kubernetes-dashboard kubernetes-dashboard/kubernetes-dashboard --create-namespace --namespace kubernetes-dashboard
+```
+![alt text](Obs/image-1.png)
+
+Get Dashboard Pods by running:
+
+```
+k get pods -n kubernetes-dashboard
+```
+> Output:
+>
+
+```
+❯ k get pods -n kubernetes-dashboard
+NAME                                                    READY   STATUS    RESTARTS   AGE
+kubernetes-dashboard-api-787494d7c7-jdww5               1/1     Running   0          6m9s
+kubernetes-dashboard-auth-7fd7c76cc5-fkfpr              1/1     Running   0          6m9s
+kubernetes-dashboard-kong-7696bb8c88-p4s49              1/1     Running   0          6m9s
+kubernetes-dashboard-metrics-scraper-5485b64c47-v56dh   1/1     Running   0          6m9s
+kubernetes-dashboard-web-84f8d6fff4-8c4d7               1/1     Running   0          6m9s
+```
+Deployments:<p>
+![alt text](Obs/image-3.png)
+
+Pods:<p>
+![alt text](Obs/image-2.png)
+
+![alt text](Obs/image-4.png)
+
+DB logs:<p>
+![alt text](Obs/image-5.png)
+
+# Monitor Deployment
+I will leverage `grafana cloud` to monitor application application, CPU and memory resources. To use grafana cloud, I will utilise a a helm chart to configure the monitoring the containers and other resources. 
+
+## Access grafana on the browser 
+![alt text]({9C41A7BA-8AF3-43BB-BED2-EA667A21FD88}.png)<p>
+
+Observing the resources available and usage, from the dashboard above the node has a total of 16 cores. However, the average usage is low, at approximately 0.468 cores, peaking at 0.670 cores. This is significantly below the total available capacity, suggesting underutilisation.
+
+In the case of memory, the utilisation is low as it averaging around 3.5 GiB, peaking at 3.67 GiB. 
+
+For cost implication, gievin the low utilisation of resource, the current osts of CPU and Memory are minimal. In a production environment, although low cost should be maintained, lower utilisation near zero should be a concern to the team. This can be the issue of pods being iddle. 
+
+# Conclusion
+In this Docker hands-on project, I have demonstrated how Docker can be used to develop and containerise a .NET application. Also, showed how to add a local database as a container and persist data as well as using `Compose Watch` to automatically rebuild and run a container when the source code is updated. Again, I exhibited how tests are utilised in the development environment to mitigate bugs early using `Compose`. All these were put together in an automation with Github Actions to build, run tests and push image to Dockerhub repo and finally, I demonstrated how to use Docker Desktop to deploy your application to a fully-featured Kubernetes environment on your development machine.
 
 
 

@@ -1,2 +1,3 @@
 db/
 compose.yaml
+kustomization.yml

@@ -1,41 +1,41 @@
-name: ci build, test and push image
+# name: ci build, test and push image
 
-on:
-  push:
-    branches:
-      - main
+# on:
+#   push:
+#     branches:
+#       - main
 
-jobs:
-  docker:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout 
-        uses: actions/checkout@v4
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ vars.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+# jobs:
+#   docker:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout 
+#         uses: actions/checkout@v4
+#       - name: Login to Docker Hub
+#         uses: docker/login-action@v3
+#         with:
+#           username: ${{ vars.DOCKER_USERNAME }}
+#           password: ${{ secrets.DOCKERHUB_TOKEN }}
       
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-            version: "lab:latest"
-            driver: cloud
-            endpoint: "kwameds/cldb1" 
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
+#         with:
+#             version: "lab:latest"
+#             driver: cloud
+#             endpoint: "kwameds/cldb1" 
 
-      - name: Build and test
-        uses: docker/build-push-action@v6
-        with:
-          target: build
-          load: true
+#       - name: Build and test
+#         uses: docker/build-push-action@v6
+#         with:
+#           target: build
+#           load: true
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          platforms: linux/amd64,linux/arm64
-          target: final
-          tags: ${{ vars.DOCKER_USERNAME }}/${{ github.event.repository.name }}:latest
-          # For pull requests, export results to the build cache.
-          # Otherwise, push to a registry.
-          outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || 'type=registry,push=true' }}
+#       - name: Build and push
+#         uses: docker/build-push-action@v6
+#         with:
+#           platforms: linux/amd64,linux/arm64
+#           target: final
+#           tags: ${{ vars.DOCKER_USERNAME }}/${{ github.event.repository.name }}:latest
+#           # For pull requests, export results to the build cache.
+#           # Otherwise, push to a registry.
+#           outputs: ${{ github.event_name == 'pull_request' && 'type=cacheonly' || 'type=registry,push=true' }}
